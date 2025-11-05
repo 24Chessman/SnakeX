@@ -1,50 +1,129 @@
-# 🐍 Snake Game
+# 🐍 SnakeX — IT603 Final Project (C++)
 
-The **Snake Game** is a classic arcade project built as part of **IT603: Introduction to Programming (Autumn 2025-26)**.  
-In this game, the player controls a snake that grows longer each time it consumes food. The game ends when the snake collides with itself or the boundaries of the grid.
-
----
-
-## 🎮 Features
-
-- Grid-based game area (NxN cells).
-- Snake starts with length of 3 cells.
-- Food spawns randomly on the grid (never on the snake).
-- Continuous snake movement with keyboard controls (`W/A/S/D` or arrow keys).
-- Snake grows longer and score increases with each food consumed.
-- Game Over conditions:
-  - Collision with boundaries
-  - Collision with itself
-- Displays current score during gameplay and final score on game-over screen.
-- Option to restart or exit after game over.
+The **SnakeX Game** is a C++-based arcade project created as part of **IT603: Introduction to Programming (Autumn 2025-26)**.  
+In this game, the player controls a snake that grows longer after eating food. The game ends when the snake collides with itself or the game boundary.
 
 ---
 
-## 🧑‍💻 Technical Details
+## 🎮 Game Features
 
-- **Programming Concepts**
-  - **OOP**:  
-    - `Snake`, `Food`, and `GameBoard` represented as classes.  
-    - Encapsulation of game logic.  
-    - (Optional) Inheritance & Polymorphism for extended functionality.  
-  - **Data Structures**:  
-    - Queue / Linked List → Snake body  
-    - 2D Array → Game grid  
-  - **Basics**: Loops, conditionals, functions, modular design.
+### 🧱 Game Setup
+- Grid-based play area (e.g., NxN cells).
+- Snake starts with a length of 3 cells.
+- Food spawns randomly on the grid (never on the snake’s body).
+
+### 🎮 Gameplay Mechanics
+- The snake moves continuously in the current direction.
+- Player controls direction using `W / A / S / D` or arrow keys.
+- Eating food:
+  - Increases snake’s length by one cell.
+  - Increases the player’s score.
+- Real-time score display during gameplay.
+- **Game Over** occurs when:
+  - Snake collides with walls.
+  - Snake collides with itself.
+- Displays **final score** and **highest score** on the game-over screen.
+- Option to **restart** or **exit** after game over.
+
+---
+
+## ⚙️ Technical Details
+
+### 🧑‍💻 Programming Concepts Used
+- **Object-Oriented Programming (OOP):**
+  - Classes: `Snake`, `Food`, `GameBoard`
+  - **Encapsulation** for managing internal game logic.
+  - **Inheritance (optional):** for special snake or food types.
+  - **Polymorphism (optional):** for extended behaviors.
+
+- **Data Structures:**
+  - Queue / Linked List → to represent the snake’s body.
+  - 2D Array → to represent the game grid.
+
+- **Basic Concepts:**
+  - Loops, conditionals, and modular functions for clean design.
+
+---
+
+## 🧩 Non-Functional Requirements
+
+- **Ease of Use:**  
+  - Simple and beginner-friendly console interface.  
+  - Clear instructions before the game starts.  
+
+- **Performance:**  
+  - Smooth gameplay with no noticeable lag.  
+
+- **Extensibility:**  
+  - Modular design allows future enhancements like:
+    - Obstacles
+    - Multiple levels
+    - Special food items
+
+---
+
+## 🧾 Acceptance Criteria
+
+✅ Game starts and runs without crashes or runtime errors.  
+✅ Snake moves correctly according to user input.  
+✅ Food never spawns inside the snake.  
+✅ Score updates accurately after each food consumption.  
+✅ Proper detection of wall/self-collisions.  
+✅ Final score and highest score displayed on Game Over screen.  
+✅ Option provided to restart or exit.
+
+---
+
+## 🧠 Evaluation Criteria (As per IT603 Guidelines)
+
+| Category | Description | Weight |
+|-----------|--------------|--------|
+| **Project Completion** | Game meets all acceptance criteria | 30% |
+| **Viva (Make it Efficient)** | Explain logic, data structures, and tradeoffs | 30% |
+| **UI/UX (Make it Elegant)** | Smooth user experience, readable interface | 20% |
+| **Extensibility** | Code supports new features easily | 15% |
+| **Continuous Development** | Regular commits & progress | 5% |
 
 ---
 
 ## 🚀 How to Run
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/your-username/snake-game.git
+### 1️⃣ Clone the Repository
+```bash
+git clone https://github.com/24Chessman/SnakeX.git
+```
+### 2️⃣ Navigate to the Folder
+```
+cd SnakeX
+```
+### 3️⃣ Compile the Program
+- If you’re on Windows (using MinGW):
+```
+g++ snake.cpp -o snake.exe
+```
+- If you’re on Linux/macOS:
+```
+g++ snake.cpp -o snake.out
+```
+### 4️⃣ Run the Game
+```
+./snake.exe   # Windows
+./snake.out   # Linux/macOS
+```
 
-2. Navigate into the project folder:
-   ```bash
-   cd snake-game
+---
 
-3. Run the program:
-   ```bash
-   python snake.py
+## 💡 Future Enhancements
 
+- Multiple difficulty levels
+- Obstacles on the board
+- Sound effects and color graphics using `ncurses` or `graphics.h`
+- Save and load high scores to file
+
+---
+
+## 🧑‍🏫 Credits
+
+Developed by **Naitik Sutariya (24Chessman), Harshal Prajapati (HarshalPrajapati), Gaurang Rahani (GaurangRahani), Jay Trivedi (JayTrivedi18)**  
+Under **IT603: Introduction to Programming (Autumn 2025-26)**  
+Guided by **Prof. Ankush Chander & TAs, Dhirubhai Ambani University**
