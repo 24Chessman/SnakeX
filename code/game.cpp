@@ -1,4 +1,6 @@
 // Simple Snake Game - Cross-Platform Terminal Version
+// C++
+
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
