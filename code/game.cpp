@@ -1,5 +1,5 @@
 // Simple Snake Game - Cross-Platform Terminal Version
-// C++
+// Auto-adapts graphics for Windows (ASCII) or Linux/macOS (Emoji)
 
 #include <iostream>
 #include <cstdlib>
@@ -17,7 +17,6 @@
     #define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
     #endif
 #else
-
     // POSIX
     #include <termios.h>
     #include <unistd.h>
@@ -34,7 +33,9 @@ using namespace std;
 #define CYAN   "\033[36m"
 #define RESET  "\033[0m"
 
+// ======================================================
 // Cross-platform Terminal abstraction
+// ======================================================
 class Terminal {
 private:
 #ifdef _WIN32
@@ -42,7 +43,6 @@ private:
     HANDLE hStdout;
     CONSOLE_CURSOR_INFO originalCursorInfo;
     bool cursorInfoSaved = false;
-    // buffer to emit an ESC-style arrow sequence on Windows so game logic doesn't change
     deque<char> pendingChars;
 #else
     struct termios original;
@@ -54,20 +54,17 @@ public:
         hStdin = GetStdHandle(STD_INPUT_HANDLE);
         hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
 
-        // Save original cursor info
         CONSOLE_CURSOR_INFO cinfo;
         if (GetConsoleCursorInfo(hStdout, &cinfo)) {
             originalCursorInfo = cinfo;
             cursorInfoSaved = true;
         }
 
-        // Enable ENABLE_VIRTUAL_TERMINAL_PROCESSING so ANSI escapes work on modern Windows terminals
         DWORD mode = 0;
         if (GetConsoleMode(hStdout, &mode)) {
             SetConsoleMode(hStdout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
         }
 #else
-        // Save terminal state and set raw (no echo, non-canonical)
         tcgetattr(STDIN_FILENO, &original);
         struct termios raw = original;
         raw.c_lflag &= ~(ICANON | ECHO);
@@ -79,7 +76,6 @@ public:
 
     ~Terminal() {
 #ifdef _WIN32
-        // Restore cursor visibility
         if (cursorInfoSaved) {
             SetConsoleCursorInfo(hStdout, &originalCursorInfo);
         }
@@ -115,14 +111,12 @@ public:
 
     void clearScreen() {
 #ifdef _WIN32
-        // Use WinAPI to clear screen for smoother behavior
         CONSOLE_SCREEN_BUFFER_INFO csbi;
         DWORD cellCount;
         DWORD count;
         COORD homeCoords = {0, 0};
 
         if (!GetConsoleScreenBufferInfo(hStdout, &csbi)) {
-            // fallback to system("cls")
             system("cls");
             return;
         }
@@ -138,9 +132,7 @@ public:
 
     void moveCursor(int x, int y) {
 #ifdef _WIN32
-        // x = column, y = row (1-indexed expected by your code; we pass same numbers)
         COORD pos;
-        // Convert to 0-based coordinates for WinAPI
         pos.X = (SHORT)(max(0, x - 1));
         pos.Y = (SHORT)(max(0, y - 1));
         SetConsoleCursorPosition(hStdout, pos);
@@ -164,7 +156,6 @@ public:
 
     char getch() {
 #ifdef _WIN32
-        // If we preloaded pseudo-ESC arrow bytes, return them first
         if (!pendingChars.empty()) {
             char c = pendingChars.front();
             pendingChars.pop_front();
@@ -174,9 +165,7 @@ public:
         if (!_kbhit()) return 0;
         int c = _getch();
         if (c == 0 || c == 224) {
-            // special key / arrow
             int code = _getch();
-            // Map Win arrow codes to ESC [ A/B/C/D sequence to match your existing logic
             if (code == 72) { // up
                 pendingChars.push_back(27); pendingChars.push_back('['); pendingChars.push_back('A');
             } else if (code == 80) { // down
@@ -185,15 +174,11 @@ public:
                 pendingChars.push_back(27); pendingChars.push_back('['); pendingChars.push_back('C');
             } else if (code == 75) { // left
                 pendingChars.push_back(27); pendingChars.push_back('['); pendingChars.push_back('D');
-            } else {
-                // other function keys -> ignore or emit nothing
             }
-            // now return first of the queued bytes
             char ch = pendingChars.front();
             pendingChars.pop_front();
             return ch;
         } else {
-            // normal ASCII char
             return (char)c;
         }
 #else
@@ -214,7 +199,6 @@ public:
             height = rows;
             return;
         }
-        // fallback
         width = 80;
         height = 25;
 #else
@@ -234,7 +218,10 @@ public:
     }
 };
 
-// Simple persistent score storage
+// ======================================================
+// Game Data Structures
+// ======================================================
+
 struct ScoreData { int previousScore; int highScore; };
 
 ScoreData loadScores(const string &filename = "scores.txt") {
@@ -263,12 +250,28 @@ struct Position {
 
 enum Direction { UP, DOWN, LEFT, RIGHT, NONE };
 
-// Emojis and cell decorations
+// ======================================================
+// Symbol Configuration (Platform-aware)
+// ======================================================
+#ifdef _WIN32
+// Windows: ASCII mode
+const string EMOJI_FOOD = "O";
+const string EMOJI_SNAKE_HEAD = "@";
+const string EMOJI_SNAKE_BODY = "o";
+const string BORDER_CELL = "##";
+const string EMPTY_CELL = "  ";
+#else
+// Linux/macOS: Emoji mode
 const string EMOJI_FOOD = "🍎";
 const string EMOJI_SNAKE_HEAD = "🐍";
 const string EMOJI_SNAKE_BODY = "🟩";
-const string BORDER_CELL = "██"; // uses two-block characters
-const string EMPTY_CELL = "  ";  // two spaces to occupy 2 columns
+const string BORDER_CELL = "██";
+const string EMPTY_CELL = "  ";
+#endif
+
+// ======================================================
+// Food, Snake, GameBoard, and Game classes
+// ======================================================
 
 class Food {
 private:
@@ -285,9 +288,8 @@ public:
             pos.x = rand() % (maxX - 2) + 1;
             pos.y = rand() % (maxY - 2) + 1;
             valid = true;
-            for (const auto &s : snakeBody) {
+            for (const auto &s : snakeBody)
                 if (pos == s) { valid = false; break; }
-            }
         }
     }
 };
@@ -300,7 +302,6 @@ private:
 public:
     Snake(int startX, int startY)
         : current(RIGHT), next(RIGHT), growing(false) {
-        // horizontal initial snake facing right
         body.push_back(Position(startX, startY));
         body.push_back(Position(startX - 1, startY));
         body.push_back(Position(startX - 2, startY));
@@ -309,15 +310,11 @@ public:
     Position getHead() const { return body.front(); }
     string getHeadSymbol() const { return EMOJI_SNAKE_HEAD; }
     string getBodySymbol() const { return EMOJI_SNAKE_BODY; }
-    Direction getCurrentDirection() const { return current; }
 
     void setDirection(Direction d) {
-        if ((d == UP && current == DOWN) ||
-            (d == DOWN && current == UP) ||
-            (d == LEFT && current == RIGHT) ||
-            (d == RIGHT && current == LEFT)) {
+        if ((d == UP && current == DOWN) || (d == DOWN && current == UP) ||
+            (d == LEFT && current == RIGHT) || (d == RIGHT && current == LEFT))
             return;
-        }
         next = d;
     }
 
@@ -341,15 +338,15 @@ public:
 
     bool checkSelfCollision() const {
         Position h = getHead();
-        for (size_t i = 1; i < body.size(); ++i) if (h == body[i]) return true;
+        for (size_t i = 1; i < body.size(); ++i)
+            if (h == body[i]) return true;
         return false;
     }
 };
 
 class GameBoard {
 private:
-    int width;   // cells
-    int height;  // cells
+    int width, height;
     vector<vector<string>> grid;
 public:
     GameBoard(int w, int h) : width(w), height(h) {
@@ -358,19 +355,24 @@ public:
     }
     int getWidth() const { return width; }
     int getHeight() const { return height; }
+
+
     void clear() {
         for (int y = 0; y < height; ++y)
             for (int x = 0; x < width; ++x)
-                grid[y][x] = (y == 0 || y == height-1 || x == 0 || x == width-1) ? BORDER_CELL : EMPTY_CELL;
+                grid[y][x] = (y == 0 || y == height-1 || x == 0 || x == width-1)
+                              ? BORDER_CELL : EMPTY_CELL;
     }
+
     void place(int x, int y, const string &sym) {
-        if (x >= 0 && x < width && y >= 0 && y < height) grid[y][x] = sym;
+        if (x >= 0 && x < width && y >= 0 && y < height)
+            grid[y][x] = sym;
     }
+
     bool isInsideBoundaries(const Position& p) const {
         return p.x > 0 && p.x < width - 1 && p.y > 0 && p.y < height - 1;
     }
 
-    // Render — anchored per cell to avoid drift
     void render(Terminal& term, int score, int highScore, int prevScore) const {
         term.clearScreen();
         term.moveCursor(1, 1);
@@ -381,7 +383,6 @@ public:
         term.moveCursor(1, 2);
         cout << "Controls: W/A/S/D or ARROW KEYS | Q = Quit" << flush;
 
-        // every cell is two terminal columns wide; place at col = 1 + x*2
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
                 int col = 1 + x * 2;
@@ -405,31 +406,22 @@ private:
     GameBoard* board;
     Snake* snake;
     Food* food;
-    int score;
-    int highScore;
-    int previousScore;
-    bool gameOver;
-    bool running;
-    int speedMs; // ms tick
-    const int speedStep = 8;   // reduce ms by this per apple
-    const int minSpeedMs = 30; // fastest (smallest ms)
-
-    // Track apples eaten for speed increase
-    int appleCount;
+    int score, highScore, previousScore;
+    bool gameOver, running;
+    int speedMs, appleCount;
+    const int speedStep = 8, minSpeedMs = 30;
 
 public:
     Game(int boardSize)
-        : score(0), gameOver(false), running(true), speedMs(140), previousScore(0), highScore(0), appleCount(0) {
+        : score(0), highScore(0), previousScore(0), gameOver(false),
+          running(true), speedMs(140), appleCount(0) {
         term.hideCursor();
-
-        // load scores from file
         ScoreData loaded = loadScores();
         previousScore = loaded.previousScore;
         highScore = loaded.highScore;
 
         board = new GameBoard(boardSize, boardSize);
-        int sx = boardSize / 2;
-        int sy = boardSize / 2;
+        int sx = boardSize / 2, sy = boardSize / 2;
         snake = new Snake(sx, sy);
         food = new Food();
         food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
@@ -447,8 +439,7 @@ public:
         char k = term.getch();
         if (k == 0) return;
 
-        if (k == 27) { // ESC starting arrow sequence
-            // attempt to read next two bytes (non-blocking)
+        if (k == 27) {
             if (term.kbhit()) {
                 char b1 = term.getch();
                 if (b1 == '[' && term.kbhit()) {
@@ -473,23 +464,18 @@ public:
         snake->move();
         Position head = snake->getHead();
 
-        if (!board->isInsideBoundaries(head)) { gameOver = true; return; }
-        if (snake->checkSelfCollision()) { gameOver = true; return; }
+        if (!board->isInsideBoundaries(head) || snake->checkSelfCollision()) {
+            gameOver = true; return;
+        }
 
         if (head == food->getPosition()) {
             snake->grow();
             score++;
-
-            // Increase apple counter
             appleCount++;
-
-            // Increase speed after every 4 apples
             if (appleCount >= 4) {
-                speedMs -= speedStep;
-                if (speedMs < minSpeedMs) speedMs = minSpeedMs;
-                appleCount = 0; // Reset apple count after speed increase
+                speedMs = max(minSpeedMs, speedMs - speedStep);
+                appleCount = 0;
             }
-
             if (score > highScore) highScore = score;
             food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
         }
@@ -499,47 +485,31 @@ public:
         board->clear();
         Position fpos = food->getPosition();
         board->place(fpos.x, fpos.y, food->getSymbol());
-
         const deque<Position>& body = snake->getBody();
-        for (size_t i = 0; i < body.size(); ++i) {
-            const Position &p = body[i];
-            board->place(p.x, p.y, (i == 0) ? snake->getHeadSymbol() : snake->getBodySymbol());
-        }
-
+        for (size_t i = 0; i < body.size(); ++i)
+            board->place(body[i].x, body[i].y,
+                (i == 0) ? snake->getHeadSymbol() : snake->getBodySymbol());
         board->render(term, score, highScore, previousScore);
     }
 
     void showGameOver() {
         previousScore = score;
         if (score > highScore) highScore = score;
-
-        // persist scores
-        ScoreData saveData = { previousScore, highScore };
-        saveScores(saveData);
+        saveScores({ previousScore, highScore });
 
         term.clearScreen();
-        term.moveCursor(1, 5);
-        cout << "\n\n";
-        cout << "\t ================================\n";
+        cout << "\n\n\t ================================\n";
         cout << "\t         GAME OVER!\n";
         cout << "\t ================================\n\n";
-        cout << "\t   Final Score: " << score << endl;
-        cout << "\t   High Score: " << highScore << endl;
-        cout << "\t   Previous Score: " << previousScore << endl;
+        cout << "\t   Final Score: " << score << "\n";
+        cout << "\t   High Score: " << highScore << "\n";
+        cout << "\t   Previous Score: " << previousScore << "\n";
         cout << "\n\t ================================\n\n";
         cout << "\t Press R to Restart or Q to Quit\n\n";
-        cout << flush;
 
         while (true) {
             if (term.kbhit()) {
-                char k = term.getch();
-                if (k == 0) continue;
-                if (k == 27) { // drain possible arrow bytes
-                    if (term.kbhit()) term.getch();
-                    if (term.kbhit()) term.getch();
-                    continue;
-                }
-                k = toupper(k);
+                char k = toupper(term.getch());
                 if (k == 'R') { restart(); return; }
                 else if (k == 'Q') { running = false; return; }
             }
@@ -552,10 +522,9 @@ public:
         delete food;
         score = 0;
         gameOver = false;
-        speedMs = 140; // reset speed for new run
-        appleCount = 0; // reset apple count
-        int sx = board->getWidth() / 2;
-        int sy = board->getHeight() / 2;
+        speedMs = 140;
+        appleCount = 0;
+        int sx = board->getWidth() / 2, sy = board->getHeight() / 2;
         snake = new Snake(sx, sy);
         food = new Food();
         food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
@@ -575,20 +544,29 @@ public:
     }
 };
 
+// ======================================================
+// MAIN
+// ======================================================
+
 int main() {
     srand((unsigned)time(0));
     Terminal term;
 
-    // Get terminal size dynamically and calculate the largest square grid
     int consoleW, consoleH;
     term.getSize(consoleW, consoleH);
 
-    // Dynamic grid size based on terminal
-    int gameSize = min((consoleW - 2) / 2, consoleH - 6); // leave some space for UI
-    if (gameSize < 10) gameSize = 10; // ensure at least 10x10 grid
+    int gameSize = min((consoleW - 2) / 2, consoleH - 6);
+    if (gameSize < 10) gameSize = 10;
 
     term.clearScreen();
     term.hideCursor();
+
+#ifdef _WIN32
+    cout << "[Windows mode detected — ASCII graphics]\n\n";
+#else
+    cout << "[Unix mode detected — Emoji graphics]\n\n";
+#endif
+
     cout << "===================================\n";
     cout << "       WELCOME TO SNAKE GAME\n";
     cout << "===================================\n\n";
@@ -600,7 +578,6 @@ int main() {
     cout << "  - Avoid walls and yourself\n";
     cout << "  - Press Q to quit anytime\n\n";
     cout << "Press any key to start...\n";
-    cout << flush;
 
     while (!term.kbhit()) term.sleep(50);
     term.getch();
