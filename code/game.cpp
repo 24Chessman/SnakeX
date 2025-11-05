@@ -1,14 +1,22 @@
+// Simple Snake Game - Cross-Platform Terminal Version
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
 #include <deque>
 #include <vector>
 #include <string>
-#include <termios.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <sys/select.h>
 #include <fstream>
+
+#ifdef _WIN32
+    #include <conio.h>
+    #include <windows.h>
+#else
+    // POSIX
+    #include <termios.h>
+    #include <unistd.h>
+    #include <sys/ioctl.h>
+    #include <sys/select.h>
+#endif
 
 using namespace std;
 
@@ -19,50 +27,204 @@ using namespace std;
 #define CYAN   "\033[36m"
 #define RESET  "\033[0m"
 
+// Cross-platform Terminal abstraction
 class Terminal {
 private:
+#ifdef _WIN32
+    HANDLE hStdin;
+    HANDLE hStdout;
+    CONSOLE_CURSOR_INFO originalCursorInfo;
+    bool cursorInfoSaved = false;
+    // buffer to emit an ESC-style arrow sequence on Windows so game logic doesn't change
+    deque<char> pendingChars;
+#else
     struct termios original;
+#endif
+
 public:
     Terminal() {
+#ifdef _WIN32
+        hStdin = GetStdHandle(STD_INPUT_HANDLE);
+        hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
+
+        // Save original cursor info
+        CONSOLE_CURSOR_INFO cinfo;
+        if (GetConsoleCursorInfo(hStdout, &cinfo)) {
+            originalCursorInfo = cinfo;
+            cursorInfoSaved = true;
+        }
+
+        // Enable ENABLE_VIRTUAL_TERMINAL_PROCESSING so ANSI escapes work on modern Windows terminals
+        DWORD mode = 0;
+        if (GetConsoleMode(hStdout, &mode)) {
+            SetConsoleMode(hStdout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        }
+#else
+        // Save terminal state and set raw (no echo, non-canonical)
         tcgetattr(STDIN_FILENO, &original);
         struct termios raw = original;
         raw.c_lflag &= ~(ICANON | ECHO);
         raw.c_cc[VMIN] = 0;
         raw.c_cc[VTIME] = 0;
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+#endif
     }
+
     ~Terminal() {
+#ifdef _WIN32
+        // Restore cursor visibility
+        if (cursorInfoSaved) {
+            SetConsoleCursorInfo(hStdout, &originalCursorInfo);
+        }
+#else
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &original);
         showCursor();
+#endif
     }
-    void hideCursor() { cout << "\033[?25l" << flush; }
-    void showCursor() { cout << "\033[?25h" << flush; }
-    void clearScreen() { cout << "\033[2J\033[H" << flush; }
-    void moveCursor(int x, int y) { cout << "\033[" << y << ";" << x << "H" << flush; }
+
+    void hideCursor() {
+#ifdef _WIN32
+        CONSOLE_CURSOR_INFO cci;
+        if (GetConsoleCursorInfo(hStdout, &cci)) {
+            cci.bVisible = FALSE;
+            SetConsoleCursorInfo(hStdout, &cci);
+        }
+#else
+        cout << "\033[?25l" << flush;
+#endif
+    }
+
+    void showCursor() {
+#ifdef _WIN32
+        CONSOLE_CURSOR_INFO cci;
+        if (GetConsoleCursorInfo(hStdout, &cci)) {
+            cci.bVisible = TRUE;
+            SetConsoleCursorInfo(hStdout, &cci);
+        }
+#else
+        cout << "\033[?25h" << flush;
+#endif
+    }
+
+    void clearScreen() {
+#ifdef _WIN32
+        // Use WinAPI to clear screen for smoother behavior
+        CONSOLE_SCREEN_BUFFER_INFO csbi;
+        DWORD cellCount;
+        DWORD count;
+        COORD homeCoords = {0, 0};
+
+        if (!GetConsoleScreenBufferInfo(hStdout, &csbi)) {
+            // fallback to system("cls")
+            system("cls");
+            return;
+        }
+
+        cellCount = csbi.dwSize.X * csbi.dwSize.Y;
+        FillConsoleOutputCharacter(hStdout, ' ', cellCount, homeCoords, &count);
+        FillConsoleOutputAttribute(hStdout, csbi.wAttributes, cellCount, homeCoords, &count);
+        SetConsoleCursorPosition(hStdout, homeCoords);
+#else
+        cout << "\033[2J\033[H" << flush;
+#endif
+    }
+
+    void moveCursor(int x, int y) {
+#ifdef _WIN32
+        // x = column, y = row (1-indexed expected by your code; we pass same numbers)
+        COORD pos;
+        // Convert to 0-based coordinates for WinAPI
+        pos.X = (SHORT)(max(0, x - 1));
+        pos.Y = (SHORT)(max(0, y - 1));
+        SetConsoleCursorPosition(hStdout, pos);
+#else
+        cout << "\033[" << y << ";" << x << "H" << flush;
+#endif
+    }
 
     bool kbhit() {
+#ifdef _WIN32
+        if (!pendingChars.empty()) return true;
+        return _kbhit() != 0;
+#else
         struct timeval tv = {0, 0};
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(STDIN_FILENO, &readfds);
         return select(STDIN_FILENO + 1, &readfds, NULL, NULL, &tv) == 1;
+#endif
     }
 
     char getch() {
+#ifdef _WIN32
+        // If we preloaded pseudo-ESC arrow bytes, return them first
+        if (!pendingChars.empty()) {
+            char c = pendingChars.front();
+            pendingChars.pop_front();
+            return c;
+        }
+
+        if (!_kbhit()) return 0;
+        int c = _getch();
+        if (c == 0 || c == 224) {
+            // special key / arrow
+            int code = _getch();
+            // Map Win arrow codes to ESC [ A/B/C/D sequence to match your existing logic
+            if (code == 72) { // up
+                pendingChars.push_back(27); pendingChars.push_back('['); pendingChars.push_back('A');
+            } else if (code == 80) { // down
+                pendingChars.push_back(27); pendingChars.push_back('['); pendingChars.push_back('B');
+            } else if (code == 77) { // right
+                pendingChars.push_back(27); pendingChars.push_back('['); pendingChars.push_back('C');
+            } else if (code == 75) { // left
+                pendingChars.push_back(27); pendingChars.push_back('['); pendingChars.push_back('D');
+            } else {
+                // other function keys -> ignore or emit nothing
+            }
+            // now return first of the queued bytes
+            char ch = pendingChars.front();
+            pendingChars.pop_front();
+            return ch;
+        } else {
+            // normal ASCII char
+            return (char)c;
+        }
+#else
         char c = 0;
         ssize_t r = read(STDIN_FILENO, &c, 1);
         if (r <= 0) return 0;
         return c;
+#endif
     }
 
     void getSize(int& width, int& height) {
+#ifdef _WIN32
+        CONSOLE_SCREEN_BUFFER_INFO csbi;
+        if (GetConsoleScreenBufferInfo(hStdout, &csbi)) {
+            int cols = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+            int rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+            width = cols;
+            height = rows;
+            return;
+        }
+        // fallback
+        width = 80;
+        height = 25;
+#else
         struct winsize w;
         ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
         width = w.ws_col;
         height = w.ws_row;
+#endif
     }
 
-    void sleep(int ms) { usleep(ms * 1000); }
+    void sleep(int ms) {
+#ifdef _WIN32
+        ::Sleep(ms);
+#else
+        usleep(ms * 1000);
+#endif
+    }
 };
 
 // Simple persistent score storage
@@ -73,7 +235,6 @@ ScoreData loadScores(const string &filename = "scores.txt") {
     ifstream in(filename);
     if (in.is_open()) {
         in >> s.previousScore >> s.highScore;
-        // if file malformed, values remain 0
         in.close();
     }
     return s;
