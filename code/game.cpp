@@ -1,5 +1,6 @@
-// Simple Snake Game - Cross-Platform Terminal Version
+// Simple Snake Game - Cross-Platform Terminal Version (Improved rendering: no flicker)
 // Auto-adapts graphics for Windows (ASCII) or Linux/macOS (Emoji)
+// Compile: g++ -std=c++17 snake.cpp -o snake
 
 #include <iostream>
 #include <cstdlib>
@@ -8,6 +9,7 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include <sstream>
 
 #ifdef _WIN32
     #include <conio.h>
@@ -221,7 +223,6 @@ public:
 // ======================================================
 // Game Data Structures
 // ======================================================
-
 struct ScoreData { int previousScore; int highScore; };
 
 ScoreData loadScores(const string &filename = "scores.txt") {
@@ -253,15 +254,13 @@ enum Direction { UP, DOWN, LEFT, RIGHT, NONE };
 // ======================================================
 // Symbol Configuration (Platform-aware)
 // ======================================================
-#ifdef _WIN32
-// Windows: ASCII mode
+#ifdef _WIN32 // Windows: ASCII mode
 const string EMOJI_FOOD = "O";
 const string EMOJI_SNAKE_HEAD = "@";
 const string EMOJI_SNAKE_BODY = "o";
 const string BORDER_CELL = "##";
 const string EMPTY_CELL = "  ";
-#else
-// Linux/macOS: Emoji mode
+#else // Linux/macOS: Emoji mode
 const string EMOJI_FOOD = "🍎";
 const string EMOJI_SNAKE_HEAD = "🐍";
 const string EMOJI_SNAKE_BODY = "🟩";
@@ -272,7 +271,6 @@ const string EMPTY_CELL = "  ";
 // ======================================================
 // Food, Snake, GameBoard, and Game classes
 // ======================================================
-
 class Food {
 private:
     Position pos;
@@ -356,7 +354,6 @@ public:
     int getWidth() const { return width; }
     int getHeight() const { return height; }
 
-
     void clear() {
         for (int y = 0; y < height; ++y)
             for (int x = 0; x < width; ++x)
@@ -373,30 +370,34 @@ public:
         return p.x > 0 && p.x < width - 1 && p.y > 0 && p.y < height - 1;
     }
 
+    // New render: build whole frame into stringstream and print once
     void render(Terminal& term, int score, int highScore, int prevScore) const {
-        term.clearScreen();
+        // Move cursor to top-left once and overwrite
         term.moveCursor(1, 1);
-        cout << CYAN << "SNAKE GAME  " << RESET
-             << " | Score: " << GREEN << score << RESET
-             << " | Prev: " << YELLOW << prevScore << RESET
-             << " | High: " << GREEN << highScore << RESET;
-        term.moveCursor(1, 2);
-        cout << "Controls: W/A/S/D or ARROW KEYS | Q = Quit" << flush;
 
+        ostringstream out;
+        out << CYAN << "SNAKE GAME  " << RESET
+            << " | Score: " << GREEN << score << RESET
+            << " | Prev: " << YELLOW << prevScore << RESET
+            << " | High: " << GREEN << highScore << RESET << "\n";
+        out << "Controls: W/A/S/D or ARROW KEYS | Q = Quit\n";
+
+        // Build the board rows
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
-                int col = 1 + x * 2;
-                int row = y + 3;
-                term.moveCursor(col, row);
                 const string &cell = grid[y][x];
-                if (cell == EMOJI_FOOD) cout << RED << cell << RESET;
-                else if (cell == EMOJI_SNAKE_HEAD) cout << GREEN << cell << RESET;
-                else if (cell == EMOJI_SNAKE_BODY) cout << GREEN << cell << RESET;
-                else if (cell == BORDER_CELL) cout << YELLOW << cell << RESET;
-                else cout << cell;
+                // Choose colored representation inline
+                if (cell == EMOJI_FOOD) out << RED << cell << RESET;
+                else if (cell == EMOJI_SNAKE_HEAD) out << GREEN << cell << RESET;
+                else if (cell == EMOJI_SNAKE_BODY) out << GREEN << cell << RESET;
+                else if (cell == BORDER_CELL) out << YELLOW << cell << RESET;
+                else out << cell;
             }
+            out << "\n";
         }
-        cout << flush;
+
+        // Print full frame once
+        cout << out.str() << flush;
     }
 };
 
@@ -407,14 +408,16 @@ private:
     Snake* snake;
     Food* food;
     int score, highScore, previousScore;
-    bool gameOver, running;
+    bool gameOver, running, paused;
     int speedMs, appleCount;
     const int speedStep = 8, minSpeedMs = 30;
 
 public:
     Game(int boardSize)
-        : score(0), highScore(0), previousScore(0), gameOver(false),
-          running(true), speedMs(140), appleCount(0) {
+        : score(0), highScore(0), previousScore(0),
+          gameOver(false), running(true), paused(false),
+          speedMs(140), appleCount(0) {
+
         term.hideCursor();
         ScoreData loaded = loadScores();
         previousScore = loaded.previousScore;
@@ -457,6 +460,42 @@ public:
             else if (k == 'A') snake->setDirection(LEFT);
             else if (k == 'D') snake->setDirection(RIGHT);
             else if (k == 'Q') running = false;
+            else if (k == 'P') togglePause(); // 🔥 NEW
+        }
+    }
+
+    void togglePause() {
+        paused = !paused;
+        if (paused) {
+            showPauseScreen();
+        }
+    }
+
+    void showPauseScreen() {
+        // 🧹 Clear bottom section and print pause message
+        term.moveCursor(1, board->getHeight() + 6);
+        cout << "\n" << YELLOW
+             << "\t=============================\n"
+             << "\t       GAME PAUSED\n"
+             << "\t=============================\n"
+             << "\t Press P to Resume\n"
+             << RESET << flush;
+
+        // Wait until user presses P again
+        while (paused && running) {
+            if (term.kbhit()) {
+                char k = toupper(term.getch());
+                if (k == 'P') {
+                    paused = false;
+                    term.clearScreen();
+                    render(); // redraw fresh frame after resume
+                    return;
+                } else if (k == 'Q') {
+                    running = false;
+                    return;
+                }
+            }
+            term.sleep(100);
         }
     }
 
@@ -465,7 +504,8 @@ public:
         Position head = snake->getHead();
 
         if (!board->isInsideBoundaries(head) || snake->checkSelfCollision()) {
-            gameOver = true; return;
+            gameOver = true;
+            return;
         }
 
         if (head == food->getPosition()) {
@@ -488,7 +528,7 @@ public:
         const deque<Position>& body = snake->getBody();
         for (size_t i = 0; i < body.size(); ++i)
             board->place(body[i].x, body[i].y,
-                (i == 0) ? snake->getHeadSymbol() : snake->getBodySymbol());
+                         (i == 0) ? snake->getHeadSymbol() : snake->getBodySymbol());
         board->render(term, score, highScore, previousScore);
     }
 
@@ -498,6 +538,8 @@ public:
         saveScores({ previousScore, highScore });
 
         term.clearScreen();
+        term.moveCursor(1, 1);
+
         cout << "\n\n\t ================================\n";
         cout << "\t         GAME OVER!\n";
         cout << "\t ================================\n\n";
@@ -505,13 +547,20 @@ public:
         cout << "\t   High Score: " << highScore << "\n";
         cout << "\t   Previous Score: " << previousScore << "\n";
         cout << "\n\t ================================\n\n";
-        cout << "\t Press R to Restart or Q to Quit\n\n";
+        cout << "\t Press R to Restart, Q to Quit\n\n" << flush;
 
         while (true) {
             if (term.kbhit()) {
                 char k = toupper(term.getch());
-                if (k == 'R') { restart(); return; }
-                else if (k == 'Q') { running = false; return; }
+                if (k == 'R') {
+                    term.clearScreen();
+                    restart();
+                    return;
+                } else if (k == 'Q') {
+                    term.clearScreen();
+                    running = false;
+                    return;
+                }
             }
             term.sleep(50);
         }
@@ -522,32 +571,43 @@ public:
         delete food;
         score = 0;
         gameOver = false;
+        paused = false;
         speedMs = 140;
         appleCount = 0;
+
         int sx = board->getWidth() / 2, sy = board->getHeight() / 2;
         snake = new Snake(sx, sy);
         food = new Food();
         food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
+
+        term.clearScreen();
+        term.moveCursor(1, 1);
     }
 
     void run() {
+        render();
         while (running) {
-            if (!gameOver) {
+            if (gameOver) {
+                showGameOver();
+            } else if (!paused) {
                 handleInput();
                 update();
                 render();
                 term.sleep(speedMs);
             } else {
-                showGameOver();
+                // still handle pause input while paused
+                handleInput();
+                term.sleep(100);
             }
         }
     }
 };
 
+
+
 // ======================================================
 // MAIN
 // ======================================================
-
 int main() {
     srand((unsigned)time(0));
     Terminal term;
