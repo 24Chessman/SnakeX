@@ -547,7 +547,7 @@ public:
         cout << "\t   High Score: " << highScore << "\n";
         cout << "\t   Previous Score: " << previousScore << "\n";
         cout << "\n\t ================================\n\n";
-        cout << "\t Press R to Restart, Q to Quit, P to Pause/Resume\n\n" << flush;
+        cout << "\t Press R to Restart, Q to Quit\n\n" << flush;
 
         while (true) {
             if (term.kbhit()) {
