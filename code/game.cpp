@@ -547,7 +547,7 @@ public:
         cout << "\t   High Score: " << highScore << "\n";
         cout << "\t   Previous Score: " << previousScore << "\n";
         cout << "\n\t ================================\n\n";
-        cout << "\t Press R to Restart, Q to Quit\n\n" << flush;
+        cout << "\t Press R to Restart, Q to Quit, P to Pause/Resume\n\n" << flush;
 
         while (true) {
             if (term.kbhit()) {
@@ -637,6 +637,7 @@ int main() {
     cout << "  - Speed increases after every 4 apples eaten\n";
     cout << "  - Avoid walls and yourself\n";
     cout << "  - Press Q to quit anytime\n\n";
+    cout << "  - Press P to Pause/Resume anytime\n\n";
     cout << "Press any key to start...\n";
 
     while (!term.kbhit()) term.sleep(50);
