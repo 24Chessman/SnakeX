@@ -460,7 +460,7 @@ public:
             else if (k == 'A') snake->setDirection(LEFT);
             else if (k == 'D') snake->setDirection(RIGHT);
             else if (k == 'Q') running = false;
-            else if (k == 'P') togglePause(); // 🔥 NEW
+            else if (k == 'P') togglePause();
         }
     }
 
