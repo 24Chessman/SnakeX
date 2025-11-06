@@ -380,7 +380,7 @@ public:
             << " | Score: " << GREEN << score << RESET
             << " | Prev: " << YELLOW << prevScore << RESET
             << " | High: " << GREEN << highScore << RESET << "\n";
-        out << "Controls: W/A/S/D or ARROW KEYS | Q = Quit\n";
+        out << "Controls: W/A/S/D or ARROW KEYS | Q = Quit | P = Pause/Resume\n";
 
         // Build the board rows
         for (int y = 0; y < height; ++y) {
