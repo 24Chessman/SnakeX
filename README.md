@@ -33,8 +33,6 @@ In this game, the player controls a snake that grows longer after eating food. T
 - **Object-Oriented Programming (OOP):**
   - Classes: `Game`,`Snake`, `Food`, `GameBoard`
   - **Encapsulation** for managing internal game logic.
-  - **Inheritance :** for special snake or food types.
-  - **Polymorphism :** for extended behaviors.
 
 - **Data Structures:**
   - Queue / Linked List → to represent the snake’s body.
