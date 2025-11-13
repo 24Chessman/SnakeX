@@ -35,7 +35,7 @@ In this game, the player controls a snake that grows longer after eating food. T
   - **Encapsulation** for managing internal game logic.
 
 - **Data Structures:**
-  - Queue / Linked List → to represent the snake’s body.
+  - Queue → to represent the snake’s body.
   - 2D Array → to represent the game grid.
 
 - **Basic Concepts:**
