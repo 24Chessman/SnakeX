@@ -255,15 +255,19 @@ enum Direction { UP, DOWN, LEFT, RIGHT, NONE };
 // Symbol Configuration (Platform-aware)
 // ======================================================
 #ifdef _WIN32 // Windows: ASCII mode
-const string EMOJI_FOOD = "O";
-const string EMOJI_SNAKE_HEAD = "@";
-const string EMOJI_SNAKE_BODY = "o";
+const string EMOJI_FOOD = "O ";
+const string EMOJI_SNAKE_HEAD = "@ ";
+const string EMOJI_SNAKE_BODY = "o ";
+const string EMOJI_SNAKE2_HEAD = "X ";
+const string EMOJI_SNAKE2_BODY = "x ";
 const string BORDER_CELL = "##";
 const string EMPTY_CELL = "  ";
 #else // Linux/macOS: Emoji mode
 const string EMOJI_FOOD = "🍎";
 const string EMOJI_SNAKE_HEAD = "🐍";
 const string EMOJI_SNAKE_BODY = "🟩";
+const string EMOJI_SNAKE2_HEAD = "X ";
+const string EMOJI_SNAKE2_BODY = "x ";
 const string BORDER_CELL = "██";
 const string EMPTY_CELL = "  ";
 #endif
@@ -280,13 +284,16 @@ public:
     Position getPosition() const { return pos; }
     string getSymbol() const { return symbol; }
 
-    void spawn(int maxX, int maxY, const deque<Position>& snakeBody) {
+    void spawn(int maxX, int maxY, const deque<Position>& snakeBody,
+               const deque<Position>& snake2Body) {
         bool valid = false;
         while (!valid) {
             pos.x = rand() % (maxX - 2) + 1;
             pos.y = rand() % (maxY - 2) + 1;
             valid = true;
             for (const auto &s : snakeBody)
+                if (pos == s) { valid = false; break; }
+            for (const auto &s : snake2Body)
                 if (pos == s) { valid = false; break; }
         }
     }
@@ -297,17 +304,37 @@ private:
     deque<Position> body;
     Direction current, next;
     bool growing;
+    string headSymbol, bodySymbol;
 public:
-    Snake(int startX, int startY)
-        : current(RIGHT), next(RIGHT), growing(false) {
+    Snake(int startX, int startY, Direction startDirection = RIGHT,
+          const string &headSym = EMOJI_SNAKE_HEAD,
+          const string &bodySym = EMOJI_SNAKE_BODY)
+        : current(startDirection), next(startDirection), growing(false),
+          headSymbol(headSym), bodySymbol(bodySym) {
         body.push_back(Position(startX, startY));
-        body.push_back(Position(startX - 1, startY));
-        body.push_back(Position(startX - 2, startY));
+        switch (startDirection) {
+            case UP:
+                body.push_back(Position(startX, startY + 1));
+                body.push_back(Position(startX, startY + 2));
+                break;
+            case DOWN:
+                body.push_back(Position(startX, startY - 1));
+                body.push_back(Position(startX, startY - 2));
+                break;
+            case LEFT:
+                body.push_back(Position(startX + 1, startY));
+                body.push_back(Position(startX + 2, startY));
+                break;
+            default:
+                body.push_back(Position(startX - 1, startY));
+                body.push_back(Position(startX - 2, startY));
+                break;
+        }
     }
     const deque<Position>& getBody() const { return body; }
     Position getHead() const { return body.front(); }
-    string getHeadSymbol() const { return EMOJI_SNAKE_HEAD; }
-    string getBodySymbol() const { return EMOJI_SNAKE_BODY; }
+    string getHeadSymbol() const { return headSymbol; }
+    string getBodySymbol() const { return bodySymbol; }
 
     void setDirection(Direction d) {
         if ((d == UP && current == DOWN) || (d == DOWN && current == UP) ||
@@ -338,6 +365,13 @@ public:
         Position h = getHead();
         for (size_t i = 1; i < body.size(); ++i)
             if (h == body[i]) return true;
+        return false;
+    }
+
+    bool checkOtherCollision(const deque<Position>& otherBody) const {
+        Position h = getHead();
+        for (const auto &s : otherBody)
+            if (h == s) return true;
         return false;
     }
 };
@@ -371,16 +405,17 @@ public:
     }
 
     // New render: build whole frame into stringstream and print once
-    void render(Terminal& term, int score, int highScore, int prevScore) const {
+    void render(Terminal& term, int score, int score2, int highScore, int prevScore) const {
         // Move cursor to top-left once and overwrite
         term.moveCursor(1, 1);
 
         ostringstream out;
         out << CYAN << "SNAKE GAME  " << RESET
-            << " | Score: " << GREEN << score << RESET
+            << " | P1 Score: " << GREEN << score << RESET
+            << " | P2 Score: " << GREEN << score2 << RESET
             << " | Prev: " << YELLOW << prevScore << RESET
             << " | High: " << GREEN << highScore << RESET << "\n";
-        out << "Controls: W/A/S/D or ARROW KEYS | Q = Quit | P = Pause/Resume\n";
+        out << "Controls: P1 ARROW KEYS | P2 W/A/S/D | Q = Quit | P = Pause/Resume\n";
 
         // Build the board rows
         for (int y = 0; y < height; ++y) {
@@ -390,6 +425,8 @@ public:
                 if (cell == EMOJI_FOOD) out << RED << cell << RESET;
                 else if (cell == EMOJI_SNAKE_HEAD) out << GREEN << cell << RESET;
                 else if (cell == EMOJI_SNAKE_BODY) out << GREEN << cell << RESET;
+                else if (cell == EMOJI_SNAKE2_HEAD) out << GREEN << cell << RESET;
+                else if (cell == EMOJI_SNAKE2_BODY) out << GREEN << cell << RESET;
                 else if (cell == BORDER_CELL) out << YELLOW << cell << RESET;
                 else out << cell;
             }
@@ -406,17 +443,19 @@ private:
     Terminal term;
     GameBoard* board;
     Snake* snake;
+    Snake* snake2;
     Food* food;
-    int score, highScore, previousScore;
+    int score, score2, highScore, previousScore;
     bool gameOver, running, paused;
     int speedMs, appleCount;
+    string loserMessage;
     const int speedStep = 8, minSpeedMs = 30;
 
 public:
     Game(int boardSize)
-        : score(0), highScore(0), previousScore(0),
+        : score(0), score2(0), highScore(0), previousScore(0),
           gameOver(false), running(true), paused(false),
-          speedMs(140), appleCount(0) {
+          speedMs(180), appleCount(0), loserMessage("A player lost") {
 
         term.hideCursor();
         ScoreData loaded = loadScores();
@@ -424,15 +463,17 @@ public:
         highScore = loaded.highScore;
 
         board = new GameBoard(boardSize, boardSize);
-        int sx = boardSize / 2, sy = boardSize / 2;
-        snake = new Snake(sx, sy);
+        int sx = boardSize / 4, sx2 = (boardSize * 3) / 4, sy = boardSize / 2;
+        snake = new Snake(sx, sy, LEFT);
+        snake2 = new Snake(sx2, sy, RIGHT, EMOJI_SNAKE2_HEAD, EMOJI_SNAKE2_BODY);
         food = new Food();
-        food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
+        food->spawn(board->getWidth(), board->getHeight(), snake->getBody(), snake2->getBody());
     }
 
     ~Game() {
         delete board;
         delete snake;
+        delete snake2;
         delete food;
         term.showCursor();
     }
@@ -455,10 +496,10 @@ public:
             }
         } else {
             k = toupper(k);
-            if (k == 'W') snake->setDirection(UP);
-            else if (k == 'S') snake->setDirection(DOWN);
-            else if (k == 'A') snake->setDirection(LEFT);
-            else if (k == 'D') snake->setDirection(RIGHT);
+            if (k == 'W') snake2->setDirection(UP);
+            else if (k == 'S') snake2->setDirection(DOWN);
+            else if (k == 'A') snake2->setDirection(LEFT);
+            else if (k == 'D') snake2->setDirection(RIGHT);
             else if (k == 'Q') running = false;
             else if (k == 'P') togglePause();
         }
@@ -500,11 +541,30 @@ public:
     }
 
     void update() {
+        Position oldHead = snake->getHead();
+        Position oldHead2 = snake2->getHead();
         snake->move();
+        snake2->move();
         Position head = snake->getHead();
+        Position head2 = snake2->getHead();
 
-        if (!board->isInsideBoundaries(head) || snake->checkSelfCollision()) {
+        bool player1Lost = !board->isInsideBoundaries(head) ||
+                           snake->checkSelfCollision() ||
+                           snake->checkOtherCollision(snake2->getBody());
+        bool player2Lost = !board->isInsideBoundaries(head2) ||
+                           snake2->checkSelfCollision() ||
+                           snake2->checkOtherCollision(snake->getBody());
+
+        if (head == oldHead2 && head2 == oldHead) {
+            player1Lost = true;
+            player2Lost = true;
+        }
+
+        if (player1Lost || player2Lost) {
             gameOver = true;
+            if (player1Lost && player2Lost) loserMessage = "Both players lost";
+            else if (player1Lost) loserMessage = "Player 1 lost";
+            else loserMessage = "Player 2 lost";
             return;
         }
 
@@ -516,8 +576,18 @@ public:
                 speedMs = max(minSpeedMs, speedMs - speedStep);
                 appleCount = 0;
             }
-            if (score > highScore) highScore = score;
-            food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
+            if (score + score2 > highScore) highScore = score + score2;
+            food->spawn(board->getWidth(), board->getHeight(), snake->getBody(), snake2->getBody());
+        } else if (head2 == food->getPosition()) {
+            snake2->grow();
+            score2++;
+            appleCount++;
+            if (appleCount >= 4) {
+                speedMs = max(minSpeedMs, speedMs - speedStep);
+                appleCount = 0;
+            }
+            if (score + score2 > highScore) highScore = score + score2;
+            food->spawn(board->getWidth(), board->getHeight(), snake->getBody(), snake2->getBody());
         }
     }
 
@@ -529,12 +599,16 @@ public:
         for (size_t i = 0; i < body.size(); ++i)
             board->place(body[i].x, body[i].y,
                          (i == 0) ? snake->getHeadSymbol() : snake->getBodySymbol());
-        board->render(term, score, highScore, previousScore);
+        const deque<Position>& body2 = snake2->getBody();
+        for (size_t i = 0; i < body2.size(); ++i)
+            board->place(body2[i].x, body2[i].y,
+                         (i == 0) ? snake2->getHeadSymbol() : snake2->getBodySymbol());
+        board->render(term, score, score2, highScore, previousScore);
     }
 
     void showGameOver() {
-        previousScore = score;
-        if (score > highScore) highScore = score;
+        previousScore = score + score2;
+        if (score + score2 > highScore) highScore = score + score2;
         saveScores({ previousScore, highScore });
 
         term.clearScreen();
@@ -543,7 +617,10 @@ public:
         cout << "\n\n\t ================================\n";
         cout << "\t         GAME OVER!\n";
         cout << "\t ================================\n\n";
-        cout << "\t   Final Score: " << score << "\n";
+        cout << "\t   " << loserMessage << "\n\n";
+        cout << "\t   Player 1 Score: " << score << "\n";
+        cout << "\t   Player 2 Score: " << score2 << "\n";
+        cout << "\t   Total Score: " << previousScore << "\n";
         cout << "\t   High Score: " << highScore << "\n";
         cout << "\t   Previous Score: " << previousScore << "\n";
         cout << "\n\t ================================\n\n";
@@ -568,17 +645,21 @@ public:
 
     void restart() {
         delete snake;
+        delete snake2;
         delete food;
         score = 0;
+        score2 = 0;
         gameOver = false;
         paused = false;
-        speedMs = 140;
+        speedMs = 180;
         appleCount = 0;
+        loserMessage = "A player lost";
 
-        int sx = board->getWidth() / 2, sy = board->getHeight() / 2;
-        snake = new Snake(sx, sy);
+        int sx = board->getWidth() / 4, sx2 = (board->getWidth() * 3) / 4, sy = board->getHeight() / 2;
+        snake = new Snake(sx, sy, LEFT);
+        snake2 = new Snake(sx2, sy, RIGHT, EMOJI_SNAKE2_HEAD, EMOJI_SNAKE2_BODY);
         food = new Food();
-        food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
+        food->spawn(board->getWidth(), board->getHeight(), snake->getBody(), snake2->getBody());
 
         term.clearScreen();
         term.moveCursor(1, 1);
@@ -632,10 +713,11 @@ int main() {
     cout << "===================================\n\n";
     cout << "Saved High Score: " << loadScores().highScore << "\n\n";
     cout << "Instructions:\n";
-    cout << "  - Use W/A/S/D or ARROW KEYS to control the snake\n";
+    cout << "  - Player 1 uses ARROW KEYS\n";
+    cout << "  - Player 2 uses W/A/S/D\n";
     cout << "  - Eat " << EMOJI_FOOD << " to grow and score\n";
     cout << "  - Speed increases after every 4 apples eaten\n";
-    cout << "  - Avoid walls and yourself\n";
+    cout << "  - Avoid walls, yourself, and the other snake\n";
     cout << "  - Press Q to quit anytime\n\n";
     cout << "  - Press P to Pause/Resume anytime\n\n";
     cout << "Press any key to start...\n";
