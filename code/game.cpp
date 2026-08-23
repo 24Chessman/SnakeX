@@ -405,7 +405,7 @@ class Game {
 private:
     Terminal term;
     GameBoard* board;
-    Snake* snake;
+    std::vector<Snake*> snakes;
     Food* food;
     int score, highScore, previousScore;
     bool gameOver, running, paused;
@@ -425,14 +425,15 @@ public:
 
         board = new GameBoard(boardSize, boardSize);
         int sx = boardSize / 2, sy = boardSize / 2;
-        snake = new Snake(sx, sy);
+        snakes.push_back(new Snake(sx, sy));
         food = new Food();
-        food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
+        food->spawn(board->getWidth(), board->getHeight(), snakes[0]->getBody());
     }
 
     ~Game() {
         delete board;
-        delete snake;
+        for (auto s : snakes) delete s;
+        snakes.clear();
         delete food;
         term.showCursor();
     }
@@ -447,18 +448,18 @@ public:
                 char b1 = term.getch();
                 if (b1 == '[' && term.kbhit()) {
                     char b2 = term.getch();
-                    if (b2 == 'A') snake->setDirection(UP);
-                    else if (b2 == 'B') snake->setDirection(DOWN);
-                    else if (b2 == 'C') snake->setDirection(RIGHT);
-                    else if (b2 == 'D') snake->setDirection(LEFT);
+                    if (b2 == 'A') snakes[0]->setDirection(UP);
+                    else if (b2 == 'B') snakes[0]->setDirection(DOWN);
+                    else if (b2 == 'C') snakes[0]->setDirection(RIGHT);
+                    else if (b2 == 'D') snakes[0]->setDirection(LEFT);
                 }
             }
         } else {
             k = toupper(k);
-            if (k == 'W') snake->setDirection(UP);
-            else if (k == 'S') snake->setDirection(DOWN);
-            else if (k == 'A') snake->setDirection(LEFT);
-            else if (k == 'D') snake->setDirection(RIGHT);
+            if (k == 'W') snakes[0]->setDirection(UP);
+            else if (k == 'S') snakes[0]->setDirection(DOWN);
+            else if (k == 'A') snakes[0]->setDirection(LEFT);
+            else if (k == 'D') snakes[0]->setDirection(RIGHT);
             else if (k == 'Q') running = false;
             else if (k == 'P') togglePause();
         }
@@ -517,7 +518,7 @@ public:
                 appleCount = 0;
             }
             if (score > highScore) highScore = score;
-            food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
+            food->spawn(board->getWidth(), board->getHeight(), snakes[0]->getBody());
         }
     }
 
@@ -525,10 +526,12 @@ public:
         board->clear();
         Position fpos = food->getPosition();
         board->place(fpos.x, fpos.y, food->getSymbol());
-        const deque<Position>& body = snake->getBody();
-        for (size_t i = 0; i < body.size(); ++i)
-            board->place(body[i].x, body[i].y,
-                         (i == 0) ? snake->getHeadSymbol() : snake->getBodySymbol());
+        for (auto s : snakes) {
+            const deque<Position>& body = s->getBody();
+            for (size_t i = 0; i < body.size(); ++i)
+                board->place(body[i].x, body[i].y,
+                             (i == 0) ? s->getHeadSymbol() : s->getBodySymbol());
+        }
         board->render(term, score, highScore, previousScore);
     }
 
@@ -567,7 +570,8 @@ public:
     }
 
     void restart() {
-        delete snake;
+        for (auto s : snakes) delete s;
+        snakes.clear();
         delete food;
         score = 0;
         gameOver = false;
@@ -576,9 +580,9 @@ public:
         appleCount = 0;
 
         int sx = board->getWidth() / 2, sy = board->getHeight() / 2;
-        snake = new Snake(sx, sy);
+        snakes.push_back(new Snake(sx, sy));
         food = new Food();
-        food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
+        food->spawn(board->getWidth(), board->getHeight(), snakes[0]->getBody());
 
         term.clearScreen();
         term.moveCursor(1, 1);
