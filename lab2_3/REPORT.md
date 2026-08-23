@@ -48,7 +48,9 @@ At least three things the agent reported that are *not* real findings on this co
 
 | smell reported | `file:line` | why it does not hold |
 |---|---|---|
-| ___ | ___ | ___ |
+| Hardcoded UI Strings | `code/game.cpp:379` | Extracting basic terminal layout strings to a config file is overengineering for a simple console app. |
+| Primitive Obsession | `code/game.cpp:410` | The scores are just simple counters for a single session; wrapping them in a class adds unnecessary complexity. |
+| Data Clump | `code/game.cpp:525` | Passing basic coordinates directly to `board->place()` is perfectly fine here and combining them into a payload object isn't strictly necessary. |
 | ___ | ___ | ___ |
 | ___ | ___ | ___ |
 
