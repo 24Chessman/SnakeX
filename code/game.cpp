@@ -277,10 +277,11 @@ private:
     string symbol;
 public:
     Food() : symbol(EMOJI_FOOD) {}
-    Position getPosition() const { return pos; }
-    string getSymbol() const { return symbol; }
+    virtual ~Food() = default;
+    virtual Position getPosition() const { return pos; }
+    virtual string getSymbol() const { return symbol; }
 
-    void spawn(int maxX, int maxY, const deque<Position>& snakeBody) {
+    virtual void spawn(int maxX, int maxY, const deque<Position>& snakeBody) {
         bool valid = false;
         while (!valid) {
             pos.x = rand() % (maxX - 2) + 1;
@@ -407,16 +408,17 @@ private:
     GameBoard* board;
     Snake* snake;
     Food* food;
+    bool ownsFood;
     int score, highScore, previousScore;
     bool gameOver, running, paused;
     int speedMs, appleCount;
     const int speedStep = 8, minSpeedMs = 30;
 
 public:
-    Game(int boardSize)
+    Game(int boardSize, Food* customFood = nullptr)
         : score(0), highScore(0), previousScore(0),
           gameOver(false), running(true), paused(false),
-          speedMs(140), appleCount(0) {
+          speedMs(140), appleCount(0), ownsFood(customFood == nullptr) {
 
         term.hideCursor();
         ScoreData loaded = loadScores();
@@ -426,16 +428,22 @@ public:
         board = new GameBoard(boardSize, boardSize);
         int sx = boardSize / 2, sy = boardSize / 2;
         snake = new Snake(sx, sy);
-        food = new Food();
-        food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
+        if (customFood) {
+            food = customFood;
+        } else {
+            food = new Food();
+            food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
+        }
     }
 
     ~Game() {
         delete board;
         delete snake;
-        delete food;
+        if (ownsFood) delete food;
         term.showCursor();
     }
+
+    const Snake* getSnake() const { return snake; }
 
     void handleInput() {
         if (!term.kbhit()) return;
