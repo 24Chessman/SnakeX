@@ -271,6 +271,10 @@ const string EMPTY_CELL = "  ";
 // ======================================================
 // Food, Snake, GameBoard, and Game classes
 // ======================================================
+const int NUM_PLAYERS = 2;
+
+class Snake;
+
 class Food {
 private:
     Position pos;
@@ -298,8 +302,8 @@ private:
     Direction current, next;
     bool growing;
 public:
-    Snake(int startX, int startY)
-        : current(RIGHT), next(RIGHT), growing(false) {
+    Snake(int startX, int startY, Direction startDir = RIGHT)
+        : current(startDir), next(startDir), growing(false) {
         body.push_back(Position(startX, startY));
         body.push_back(Position(startX - 1, startY));
         body.push_back(Position(startX - 2, startY));
@@ -340,7 +344,29 @@ public:
             if (h == body[i]) return true;
         return false;
     }
+
+    bool checkOtherCollision(const deque<Position>& otherBody) const {
+        Position h = getHead();
+        for (const auto& p : otherBody)
+            if (h == p) return true;
+        return false;
+    }
 };
+
+void Food::spawn(int maxX, int maxY, const vector<Snake*>& snakes) {
+    bool valid = false;
+    while (!valid) {
+        pos.x = rand() % (maxX - 2) + 1;
+        pos.y = rand() % (maxY - 2) + 1;
+        valid = true;
+        for (const auto &s : snakes) {
+            for (const auto &bodyPart : s->getBody()) {
+                if (pos == bodyPart) { valid = false; break; }
+            }
+            if (!valid) break;
+        }
+    }
+}
 
 class GameBoard {
 private:
@@ -380,7 +406,7 @@ public:
             << " | Score: " << GREEN << score << RESET
             << " | Prev: " << YELLOW << prevScore << RESET
             << " | High: " << GREEN << highScore << RESET << "\n";
-        out << "Controls: W/A/S/D or ARROW KEYS | Q = Quit | P = Pause/Resume\n";
+        out << "Controls: P1: ARROW KEYS | P2: W/A/S/D | Q = Quit | P = Pause/Resume\n";
 
         // Build the board rows
         for (int y = 0; y < height; ++y) {
@@ -411,12 +437,31 @@ private:
     bool gameOver, running, paused;
     int speedMs, appleCount;
     const int speedStep = 8, minSpeedMs = 30;
+    int losingPlayer;
+
+    void setupSnakesAndFood() {
+        snakes.resize(NUM_PLAYERS);
+        for (int i = 0; i < NUM_PLAYERS; ++i) {
+            int sy = board->getHeight() / 2;
+            int sx;
+            Direction dir = RIGHT;
+            if (NUM_PLAYERS == 1) {
+                sx = board->getWidth() / 2;
+            } else {
+                sx = (board->getWidth() * (i + 1)) / (NUM_PLAYERS + 1);
+                if (i == 1) dir = LEFT;
+            }
+            snakes[i] = new Snake(sx, sy, dir);
+        }
+        food = new Food();
+        food->spawn(board->getWidth(), board->getHeight(), snakes);
+    }
 
 public:
     Game(int boardSize)
         : score(0), highScore(0), previousScore(0),
           gameOver(false), running(true), paused(false),
-          speedMs(140), appleCount(0) {
+          speedMs(140), appleCount(0), losingPlayer(0) {
 
         term.hideCursor();
         ScoreData loaded = loadScores();
