@@ -271,16 +271,23 @@ const string EMPTY_CELL = "  ";
 // ======================================================
 // Food, Snake, GameBoard, and Game classes
 // ======================================================
-class Food {
+class FoodSource {
+public:
+    virtual ~FoodSource() = default;
+    virtual Position getPosition() const = 0;
+    virtual void spawn(int maxX, int maxY, const deque<Position>& snakeBody) = 0;
+};
+
+class Food : public FoodSource {
 private:
     Position pos;
     string symbol;
 public:
     Food() : symbol(EMOJI_FOOD) {}
-    Position getPosition() const { return pos; }
+    Position getPosition() const override { return pos; }
     string getSymbol() const { return symbol; }
 
-    void spawn(int maxX, int maxY, const deque<Position>& snakeBody) {
+    void spawn(int maxX, int maxY, const deque<Position>& snakeBody) override {
         bool valid = false;
         while (!valid) {
             pos.x = rand() % (maxX - 2) + 1;
@@ -401,27 +408,56 @@ public:
     }
 };
 
+struct GameProgress {
+    int score = 0;
+    int highScore = 0;
+    int appleCount = 0;
+    int speedMs = 140;
+    bool gameOver = false;
+};
+
+void advanceGame(Snake& snake, const GameBoard& board, FoodSource& food,
+                 GameProgress& progress, int speedStep = 8, int minSpeedMs = 30) {
+    snake.move();
+    Position head = snake.getHead();
+
+    if (!board.isInsideBoundaries(head) || snake.checkSelfCollision()) {
+        progress.gameOver = true;
+        return;
+    }
+
+    if (head == food.getPosition()) {
+        snake.grow();
+        progress.score++;
+        progress.appleCount++;
+        if (progress.appleCount >= 4) {
+            progress.speedMs = max(minSpeedMs, progress.speedMs - speedStep);
+            progress.appleCount = 0;
+        }
+        if (progress.score > progress.highScore) progress.highScore = progress.score;
+        food.spawn(board.getWidth(), board.getHeight(), snake.getBody());
+    }
+}
+
 class Game {
 private:
     Terminal term;
     GameBoard* board;
     Snake* snake;
     Food* food;
-    int score, highScore, previousScore;
-    bool gameOver, running, paused;
-    int speedMs, appleCount;
+    GameProgress progress;
+    int previousScore;
+    bool running, paused;
     const int speedStep = 8, minSpeedMs = 30;
 
 public:
     Game(int boardSize)
-        : score(0), highScore(0), previousScore(0),
-          gameOver(false), running(true), paused(false),
-          speedMs(140), appleCount(0) {
+        : previousScore(0), running(true), paused(false) {
 
         term.hideCursor();
         ScoreData loaded = loadScores();
         previousScore = loaded.previousScore;
-        highScore = loaded.highScore;
+        progress.highScore = loaded.highScore;
 
         board = new GameBoard(boardSize, boardSize);
         int sx = boardSize / 2, sy = boardSize / 2;
@@ -500,25 +536,7 @@ public:
     }
 
     void update() {
-        snake->move();
-        Position head = snake->getHead();
-
-        if (!board->isInsideBoundaries(head) || snake->checkSelfCollision()) {
-            gameOver = true;
-            return;
-        }
-
-        if (head == food->getPosition()) {
-            snake->grow();
-            score++;
-            appleCount++;
-            if (appleCount >= 4) {
-                speedMs = max(minSpeedMs, speedMs - speedStep);
-                appleCount = 0;
-            }
-            if (score > highScore) highScore = score;
-            food->spawn(board->getWidth(), board->getHeight(), snake->getBody());
-        }
+        advanceGame(*snake, *board, *food, progress, speedStep, minSpeedMs);
     }
 
     void render() {
@@ -529,13 +547,13 @@ public:
         for (size_t i = 0; i < body.size(); ++i)
             board->place(body[i].x, body[i].y,
                          (i == 0) ? snake->getHeadSymbol() : snake->getBodySymbol());
-        board->render(term, score, highScore, previousScore);
+        board->render(term, progress.score, progress.highScore, previousScore);
     }
 
     void showGameOver() {
-        previousScore = score;
-        if (score > highScore) highScore = score;
-        saveScores({ previousScore, highScore });
+        previousScore = progress.score;
+        if (progress.score > progress.highScore) progress.highScore = progress.score;
+        saveScores({ previousScore, progress.highScore });
 
         term.clearScreen();
         term.moveCursor(1, 1);
@@ -543,8 +561,8 @@ public:
         cout << "\n\n\t ================================\n";
         cout << "\t         GAME OVER!\n";
         cout << "\t ================================\n\n";
-        cout << "\t   Final Score: " << score << "\n";
-        cout << "\t   High Score: " << highScore << "\n";
+        cout << "\t   Final Score: " << progress.score << "\n";
+        cout << "\t   High Score: " << progress.highScore << "\n";
         cout << "\t   Previous Score: " << previousScore << "\n";
         cout << "\n\t ================================\n\n";
         cout << "\t Press R to Restart, Q to Quit\n\n" << flush;
@@ -569,11 +587,11 @@ public:
     void restart() {
         delete snake;
         delete food;
-        score = 0;
-        gameOver = false;
+        progress.score = 0;
+        progress.gameOver = false;
         paused = false;
-        speedMs = 140;
-        appleCount = 0;
+        progress.speedMs = 140;
+        progress.appleCount = 0;
 
         int sx = board->getWidth() / 2, sy = board->getHeight() / 2;
         snake = new Snake(sx, sy);
@@ -587,13 +605,13 @@ public:
     void run() {
         render();
         while (running) {
-            if (gameOver) {
+            if (progress.gameOver) {
                 showGameOver();
             } else if (!paused) {
                 handleInput();
                 update();
                 render();
-                term.sleep(speedMs);
+                term.sleep(progress.speedMs);
             } else {
                 // still handle pause input while paused
                 handleInput();
